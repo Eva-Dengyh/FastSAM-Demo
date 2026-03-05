@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>FastSAM Demo - 交互式图像分割</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react@19/umd/react.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/react-dom@19/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gray-50">
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+    const API_BASE = 'http://localhost:8000';
+
+    /* ==================== 工具函数 ==================== */
+
+    const MASK_COLORS = [
+      [59, 130, 246],
+      [239, 68, 68],
+      [34, 197, 94],
+      [249, 115, 22],
+      [168, 85, 247],
+    ];
+
+    function renderMask(ctx, rle, imageSize, transform, color, opacity = 0.4) {
+      const { counts, size } = rle;
+      const [h, w] = size;
+      const { ox, oy, scale } = transform;
+
+      const tmpCanvas = document.createElement('canvas');
+      tmpCanvas.width = w;
+      tmpCanvas.height = h;
+      const tmpCtx = tmpCanvas.getContext('2d');
+      const imgData = tmpCtx.createImageData(w, h);
+
+      let idx = 0;
+      let val = 0;
+      for (const count of counts) {
+        for (let i = 0; i < count && idx < w * h; i++, idx++) {
+          if (val === 1) {
+            const p = idx * 4;
+            imgData.data[p] = color[0];
+            imgData.data[p + 1] = color[1];
+            imgData.data[p + 2] = color[2];
+            imgData.data[p + 3] = Math.round(opacity * 255);
+          }
+        }
+        val = 1 - val;
+      }
+
+      tmpCtx.putImageData(imgData, 0, 0);
+      ctx.drawImage(tmpCanvas, ox, oy, w * scale, h * scale);
+    }
+
+    function getTransform(canvas, imageSize) {
+      const scale = Math.min(canvas.width / imageSize.width, canvas.height / imageSize.height);
+      const drawW = imageSize.width * scale;
+      const drawH = imageSize.height * scale;
+      const ox = (canvas.width - drawW) / 2;
+      const oy = (canvas.height - drawH) / 2;
+      return { ox, oy, scale };
+    }
+
+    /* ==================== 组件 ==================== */
+
+    function Header({ connected }) {
+      return (
+        <header className="bg-white border-b border-gray-200 px-6 py-4">
+          <div className="max-w-4xl mx-auto flex items-center justify-between">
+            <h1 className="text-xl font-bold text-gray-800">FastSAM Demo</h1>
+            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium
+              ${connected ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+              <span className={`w-2 h-2 rounded-full ${connected ? 'bg-green-500' : 'bg-red-500'}`} />
+              {connected ? 'SAM 2.1 已连接' : '未连接'}
+            </span>
+          </div>
+        </header>
+      );
+    }
+
+    function ImageUploader({ onUpload, loading }) {
+      const inputRef = useRef(null);
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        const file = e.dataTransfer.files[0];
+        if (file && file.type.startsWith('image/')) onUpload(file);
+      };
+
+      return (
+        <div
+          onDrop={handleDrop}
+          onDragOver={(e) => e.preventDefault()}
+          onClick={() => inputRef.current.click()}
+          className="border-2 border-dashed border-gray-300 rounded-xl p-16
+                     text-center hover:border-blue-400 transition-colors cursor-pointer"
+        >
+          <input
+            ref={inputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            className="hidden"
+            onChange={(e) => e.target.files[0] && onUpload(e.target.files[0])}
+          />
+          <svg className="mx-auto h-12 w-12 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+          </svg>
+          <p className="text-lg font-medium text-gray-500">拖拽图片到此处，或点击上传</p>
+          <p className="text-sm text-gray-400 mt-2">支持 JPG / PNG / WebP，最大 10MB</p>
+          {loading && <p className="mt-4 text-blue-500 animate-pulse">正在上传并计算 embedding...</p>}
+        </div>
+      );
+    }
+
+    function CanvasOverlay({ imageUrl, imageSize, masks, onPointClick, loading }) {
+      const canvasRef = useRef(null);
+      const imgRef = useRef(null);
+      const containerRef = useRef(null);
+      const [canvasReady, setCanvasReady] = useState(false);
+
+      const setupCanvas = useCallback(() => {
+        if (!containerRef.current || !imageSize) return;
+        const canvas = canvasRef.current;
+        const containerWidth = containerRef.current.clientWidth;
+        canvas.width = containerWidth;
+        canvas.height = containerWidth * (imageSize.height / imageSize.width);
+        setCanvasReady(true);
+      }, [imageSize]);
+
+      // 绘制图片和 mask
+      useEffect(() => {
+        const canvas = canvasRef.current;
+        const img = imgRef.current;
+        if (!canvas || !img || !img.complete || !imageSize || !canvasReady) return;
+
+        const ctx = canvas.getContext('2d');
+        const { ox, oy, scale } = getTransform(canvas, imageSize);
+        const drawW = imageSize.width * scale;
+        const drawH = imageSize.height * scale;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, ox, oy, drawW, drawH);
+
+        masks.forEach((mask, i) => {
+          renderMask(ctx, mask.rle, imageSize, { ox, oy, scale }, MASK_COLORS[i % MASK_COLORS.length]);
+        });
+      }, [imageUrl, masks, imageSize, canvasReady]);
+
+      const handleClick = (e) => {
+        if (loading || !imageSize) return;
+        const canvas = canvasRef.current;
+        const rect = canvas.getBoundingClientRect();
+        const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
+        const cy = (e.clientY - rect.top) * (canvas.height / rect.height);
+        const { ox, oy, scale } = getTransform(canvas, imageSize);
+        const origX = Math.round((cx - ox) / scale);
+        const origY = Math.round((cy - oy) / scale);
+
+        if (origX >= 0 && origX < imageSize.width && origY >= 0 && origY < imageSize.height) {
+          onPointClick(origX, origY);
+        }
+      };
+
+      return (
+        <div ref={containerRef} className="relative w-full max-w-3xl mx-auto">
+          <img
+            ref={imgRef}
+            src={imageUrl}
+            className="hidden"
+            onLoad={setupCanvas}
+          />
+          <canvas
+            ref={canvasRef}
+            onClick={handleClick}
+            className={`w-full rounded-lg border-2 border-gray-200 shadow-sm
+              ${loading ? 'cursor-wait' : 'cursor-crosshair'}`}
+          />
+          {loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-lg">
+              <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function ToolBar({ onClear, onNewImage, maskCount }) {
+      return (
+        <div className="flex items-center justify-between mt-4 max-w-3xl mx-auto">
+          <div className="flex gap-3">
+            <button
+              onClick={onClear}
+              disabled={maskCount === 0}
+              className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg
+                         hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              清除选择
+            </button>
+            <button
+              onClick={onNewImage}
+              className="px-4 py-2 text-sm bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+            >
+              重新上传
+            </button>
+          </div>
+          <span className="text-sm text-gray-500">
+            {maskCount > 0 ? `已选择 ${maskCount} 个区域` : '点击图片分割物体'}
+          </span>
+        </div>
+      );
+    }
+
+    /* ==================== 主应用 ==================== */
+
+    function App() {
+      const [imageId, setImageId] = useState(null);
+      const [imageUrl, setImageUrl] = useState(null);
+      const [imageSize, setImageSize] = useState(null);
+      const [masks, setMasks] = useState([]);
+      const [loading, setLoading] = useState(false);
+      const [connected, setConnected] = useState(false);
+      const [error, setError] = useState(null);
+
+      // 检查后端连接状态
+      useEffect(() => {
+        fetch(`${API_BASE}/api/health`)
+          .then((r) => r.json())
+          .then(() => setConnected(true))
+          .catch(() => setConnected(false));
+      }, []);
+
+      const handleUpload = useCallback(async (file) => {
+        setLoading(true);
+        setError(null);
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+          const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: formData });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail?.message || `上传失败: ${res.status}`);
+          }
+          const data = await res.json();
+          setImageId(data.image_id);
+          setImageSize({ width: data.width, height: data.height });
+          setImageUrl(URL.createObjectURL(file));
+          setMasks([]);
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, []);
+
+      const handlePointSegment = useCallback(async (x, y) => {
+        if (!imageId || loading) return;
+        setLoading(true);
+        setError(null);
+        try {
+          const res = await fetch(`${API_BASE}/api/segment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ image_id: imageId, points: [{ x, y, label: 1 }] }),
+          });
+          if (!res.ok) {
+            const err = await res.json();
+            throw new Error(err.detail?.message || `分割失败: ${res.status}`);
+          }
+          const data = await res.json();
+          if (data.masks.length > 0) {
+            setMasks((prev) => [...prev, data.masks[0]]);
+          }
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setLoading(false);
+        }
+      }, [imageId, loading]);
+
+      const handleReset = useCallback(() => {
+        if (imageUrl) URL.revokeObjectURL(imageUrl);
+        setImageUrl(null);
+        setImageId(null);
+        setImageSize(null);
+        setMasks([]);
+        setError(null);
+      }, [imageUrl]);
+
+      return (
+        <div className="min-h-screen bg-gray-50">
+          <Header connected={connected} />
+          <main className="max-w-4xl mx-auto px-4 py-8">
+            {error && (
+              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                {error}
+              </div>
+            )}
+            {!imageUrl ? (
+              <ImageUploader onUpload={handleUpload} loading={loading} />
+            ) : (
+              <>
+                <CanvasOverlay
+                  imageUrl={imageUrl}
+                  imageSize={imageSize}
+                  masks={masks}
+                  onPointClick={handlePointSegment}
+                  loading={loading}
+                />
+                <ToolBar
+                  onClear={() => setMasks([])}
+                  onNewImage={handleReset}
+                  maskCount={masks.length}
+                />
+              </>
+            )}
+          </main>
+          <footer className="text-center text-xs text-gray-400 py-6">
+            FastSAM Demo &middot; SAM 2.1 &middot; FastAPI + React
+          </footer>
+        </div>
+      );
+    }
+
+    /* ==================== 挂载 ==================== */
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>

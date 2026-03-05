@@ -1,0 +1,21 @@
+[project]
+name = "fastsam-demo-backend"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "python-multipart>=0.0.9",
+    "pillow>=10.3.0",
+    "numpy>=1.26,<2",
+    "pydantic-settings>=2.0.0",
+    "torch>=2.5.1",
+    "torchvision>=0.20.1",
+    "sam-2 @ git+https://github.com/facebookresearch/sam2.git",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "pytest>=8.0.0",
+    "httpx>=0.27.0",
+]

@@ -1,6 +1,6 @@
 # API 接口文档
 
-后端基于 FastAPI，启动后访问 http://localhost:8000/docs 查看 Swagger 文档。
+后端基于 FastAPI，启动后访问 [http://localhost:8000/docs](http://localhost:8000/docs) 查看 Swagger 文档。
 
 ## 基础信息
 
@@ -31,9 +31,11 @@
 
 **请求**: `multipart/form-data`
 
-| 参数 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| file | File | 是 | 图片文件（jpg/png/webp） |
+
+| 参数   | 类型   | 必填  | 说明                 |
+| ---- | ---- | --- | ------------------ |
+| file | File | 是   | 图片文件（jpg/png/webp） |
+
 
 **响应**:
 
@@ -72,13 +74,15 @@ curl -X POST http://localhost:8000/api/upload -F "file=@test.jpg"
 }
 ```
 
-| 字段 | 类型 | 必填 | 说明 |
-|------|------|------|------|
-| image_id | string | 是 | 上传时返回的图片 ID |
-| points | array | 是 | 点击坐标数组 |
-| points[].x | int | 是 | x 坐标（原图像素） |
-| points[].y | int | 是 | y 坐标（原图像素） |
-| points[].label | int | 否 | 1=前景（默认），0=背景 |
+
+| 字段             | 类型     | 必填  | 说明            |
+| -------------- | ------ | --- | ------------- |
+| image_id       | string | 是   | 上传时返回的图片 ID   |
+| points         | array  | 是   | 点击坐标数组        |
+| points[].x     | int    | 是   | x 坐标（原图像素）    |
+| points[].y     | int    | 是   | y 坐标（原图像素）    |
+| points[].label | int    | 否   | 1=前景（默认），0=背景 |
+
 
 **响应**:
 
@@ -101,13 +105,15 @@ curl -X POST http://localhost:8000/api/upload -F "file=@test.jpg"
 
 **响应字段**:
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| masks[].rle.counts | int[] | RLE 编码（交替 0/1 像素数） |
-| masks[].rle.size | int[2] | [height, width] |
-| masks[].bbox | int[4] | [x_min, y_min, x_max, y_max] |
-| masks[].score | float | 置信度 0-1 |
-| masks[].area | int | mask 像素面积 |
+
+| 字段                 | 类型     | 说明                           |
+| ------------------ | ------ | ---------------------------- |
+| masks[].rle.counts | int[]  | RLE 编码（交替 0/1 像素数）           |
+| masks[].rle.size   | int[2] | [height, width]              |
+| masks[].bbox       | int[4] | [x_min, y_min, x_max, y_max] |
+| masks[].score      | float  | 置信度 0-1                      |
+| masks[].area       | int    | mask 像素面积                    |
+
 
 **cURL**:
 
@@ -171,14 +177,16 @@ function decodeRLE(counts, height, width) {
 
 ## 错误码
 
-| HTTP 状态码 | 错误码 | 说明 |
-|------------|--------|------|
-| 400 | BAD_REQUEST | 参数缺失或格式错误 |
-| 404 | IMAGE_NOT_FOUND | image_id 不存在或已过期 |
-| 413 | FILE_TOO_LARGE | 图片超过 10MB |
-| 415 | UNSUPPORTED_FORMAT | 不支持的图片格式 |
-| 500 | MODEL_ERROR | 模型推理出错 |
-| 503 | MODEL_NOT_READY | 模型尚未加载完成 |
+
+| HTTP 状态码 | 错误码                | 说明               |
+| -------- | ------------------ | ---------------- |
+| 400      | BAD_REQUEST        | 参数缺失或格式错误        |
+| 404      | IMAGE_NOT_FOUND    | image_id 不存在或已过期 |
+| 413      | FILE_TOO_LARGE     | 图片超过 10MB        |
+| 415      | UNSUPPORTED_FORMAT | 不支持的图片格式         |
+| 500      | MODEL_ERROR        | 模型推理出错           |
+| 503      | MODEL_NOT_READY    | 模型尚未加载完成         |
+
 
 **错误响应格式**:
 
@@ -197,14 +205,19 @@ function decodeRLE(counts, height, width) {
 
 ### GPU (NVIDIA RTX 3060)
 
-| 接口 | 平均耗时 |
-|------|---------|
+
+| 接口                     | 平均耗时 |
+| ---------------------- | ---- |
 | POST /api/upload (1MB) | 0.8s |
 | POST /api/segment (单点) | 35ms |
 
+
 ### CPU (Apple M1)
 
-| 接口 | 平均耗时 |
-|------|---------|
-| POST /api/upload (1MB) | 3.5s |
+
+| 接口                     | 平均耗时  |
+| ---------------------- | ----- |
+| POST /api/upload (1MB) | 3.5s  |
 | POST /api/segment (单点) | 120ms |
+
+

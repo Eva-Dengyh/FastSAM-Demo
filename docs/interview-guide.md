@@ -10,8 +10,9 @@
 
 1. 上传一张室内场景图
 2. 点击一个物体 → 蓝色高亮 → "点一下就分割出来了"
-3. 点击另一个物体 → 红色高亮 → "支持多物体选择，不同颜色区分"
-4. 点击已选区域 → 取消 → "也可以取消"
+3. 点击另一个物体 → 紫色高亮 → "支持多物体选择，不同颜色区分"
+4. 展示右侧面板 → "每个 mask 有置信度和面积，可以单独删除"
+5. 点击清除 → 重新上传
 
 ### 第 3 步：技术亮点（50 秒）
 
@@ -19,8 +20,9 @@
 > 1. **两阶段推理**：上传时预计算 image embedding（~1s），后续每次点击只跑 mask decoder（~30ms），所以后续交互非常快
 > 2. **SAM 2.1 比 SAM 1 更高效**：Hiera 编码器替代了 ViT，同等精度下参数量更小、速度更快
 > 3. **Mask 用 RLE 压缩传输**：512×512 的 mask 从 262KB 压缩到 <5KB
-> 4. 前端用 React + TailwindCSS CDN，单 HTML 文件，零构建
-> 5. 后端用 uv 管理依赖，`uv sync` 一键安装"
+> 4. 前端用 **Next.js + TypeScript + Tailwind CSS v4**，分层架构：types → lib → hooks → components
+> 5. 后端用 **FastAPI + uv**，`uv sync` 一键安装
+> 6. Next.js rewrites 做 API 代理，消除 CORS 问题"
 
 ## 技术话术
 
@@ -28,9 +30,13 @@
 
 > "SAM 3 确实更强——支持文本 prompt 分割。但它需要 HuggingFace 人工审批且必须 GPU。SAM 2.1 完全开放、Apache 2.0、权重直接下载、CPU 也能跑。对面试 Demo 来说，可用性比功能丰富更重要。"
 
-### "前端为什么用 CDN 引入 React？"
+### "前端为什么用 Next.js？"
 
-> "Demo 追求快速可演示。CDN + Babel 方式整个前端一个 HTML 文件，打开即用。但代码是组件化的 React 结构。生产环境会用 Vite 构建。"
+> "Next.js 是 React 生态最主流的全栈框架。App Router + TypeScript 是当前最佳实践。rewrites 可以做 BFF 层代理后端 API，避免 CORS。分层架构（types/lib/hooks/components）展示工程化能力。Tailwind CSS v4 + Framer Motion 做暗黑科技感 UI。"
+
+### "前端架构怎么设计的？"
+
+> "分四层：types 定义与后端 Schema 对齐的类型；lib 封装 API 调用和 mask 渲染工具；hooks 层的 `useSegmentation` 管理所有分割状态和操作；components 是纯 UI 组件。这样业务逻辑和 UI 完全解耦。"
 
 ### "为什么用 uv？"
 
@@ -44,7 +50,7 @@
 
 ### Q: 能用在实际产品中吗？
 
-> "核心分割逻辑完全可以。产品化需要加：用户认证、图片持久化存储（OSS）、异步推理队列、GPU 推理服务（Triton）、前端框架化。"
+> "核心分割逻辑完全可以。产品化需要加：用户认证、图片持久化存储（OSS）、异步推理队列、GPU 推理服务（Triton）、前端 SSR 优化。"
 
 ### Q: SAM 2.1 能做视频分割？
 
@@ -68,6 +74,7 @@
 ## 展示准备清单
 
 - [ ] 后端服务正常 (`curl http://localhost:8000/api/health`)
+- [ ] 前端正常 (http://localhost:3000)
 - [ ] 准备 2-3 张测试图片
 - [ ] 首次请求已预热
 - [ ] Swagger 文档可访问 (http://localhost:8000/docs)

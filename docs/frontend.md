@@ -1,239 +1,136 @@
 # 前端技术文档
 
-前端采用 React + TailwindCSS 通过 CDN 引入，整个前端是一个 `index.html` 文件。
+前端采用 Next.js 15 (App Router) + TypeScript + Tailwind CSS v4 构建，配合 Framer Motion 动效和 Lucide React 图标库。
 
-## CDN 引入
+## 技术栈
 
-```html
-<!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>FastSAM Demo</title>
-  <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react@19/umd/react.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/react-dom@19/umd/react-dom.production.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@babel/standalone/babel.min.js"></script>
-</head>
-<body>
-  <div id="root"></div>
-  <script type="text/babel">
-    // React 代码
-  </script>
-</body>
-</html>
-```
+| 组件 | 版本 | 用途 |
+|------|------|------|
+| Next.js | 15+ | React 全栈框架 (App Router) |
+| TypeScript | 5+ | 类型安全 |
+| Tailwind CSS | v4 | 原子化样式 |
+| Framer Motion | 11+ | 动效库 |
+| Lucide React | latest | 图标库 |
 
-## 组件结构
+## 项目结构
 
 ```
-App
-├── Header               # 标题、模型连接状态
-├── ImageUploader        # 拖拽/点击上传
-├── CanvasOverlay        # Canvas（图片 + mask 渲染）
-├── ToolBar              # 清除、重新上传按钮
-└── StatusBar            # mask 数量、提示信息
+frontend/
+├── package.json
+├── next.config.ts          # API 代理配置
+├── tsconfig.json
+├── public/
+├── src/
+│   ├── app/
+│   │   ├── layout.tsx      # 根布局 + 字体 + 全局样式
+│   │   ├── page.tsx        # 主页面（客户端组件）
+│   │   └── globals.css     # Tailwind + CSS 变量 + 网格背景
+│   ├── components/
+│   │   ├── Header.tsx      # 顶栏（Logo + 状态 + GitHub）
+│   │   ├── ImageUploader.tsx  # 拖拽上传区
+│   │   ├── SegmentCanvas.tsx  # Canvas 画布（图片 + mask 渲染）
+│   │   ├── ControlPanel.tsx   # 右侧控制面板
+│   │   ├── MaskList.tsx       # mask 结果列表
+│   │   └── StatusBadge.tsx    # 连接状态徽章
+│   ├── hooks/
+│   │   ├── useSegmentation.ts # 分割业务逻辑
+│   │   └── useHealthCheck.ts  # 后端健康检查轮询
+│   ├── lib/
+│   │   ├── api.ts          # API 请求封装（类型安全）
+│   │   ├── mask.ts         # RLE 解码 + Canvas 渲染
+│   │   └── constants.ts    # 常量配置
+│   └── types/
+│       └── index.ts        # TypeScript 类型定义
+```
+
+## 架构设计
+
+### 分层架构
+
+```
+types/       → 类型定义（与后端 Schema 对齐）
+lib/         → 工具层（API 封装、mask 渲染、常量）
+hooks/       → 业务逻辑层（状态管理、副作用）
+components/  → UI 组件层（纯展示 + 交互）
+app/         → 页面层（组合组件）
+```
+
+### API 代理
+
+通过 Next.js rewrites 将 `/api/*` 代理到后端，避免 CORS 问题：
+
+```typescript
+// next.config.ts
+const nextConfig: NextConfig = {
+  async rewrites() {
+    return [
+      {
+        source: '/api/:path*',
+        destination: 'http://localhost:8000/api/:path*',
+      },
+    ];
+  },
+};
 ```
 
 ## 核心组件
 
-### App - 主组件
+### useSegmentation — 分割业务 Hook
 
-```jsx
-const { useState, useEffect, useRef, useCallback } = React;
-const API_BASE = 'http://localhost:8000';
+集中管理上传、分割、清除等状态和操作：
 
-function App() {
-  const [imageId, setImageId] = useState(null);
-  const [imageUrl, setImageUrl] = useState(null);
-  const [imageSize, setImageSize] = useState(null);
-  const [masks, setMasks] = useState([]);
+```typescript
+export function useSegmentation() {
+  const [imageId, setImageId] = useState<string | null>(null);
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [imageSize, setImageSize] = useState<ImageSize | null>(null);
+  const [masks, setMasks] = useState<MaskResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleUpload = useCallback(async (file) => {
-    setLoading(true);
-    const formData = new FormData();
-    formData.append('file', file);
-    const res = await fetch(`${API_BASE}/api/upload`, { method: 'POST', body: formData });
-    const data = await res.json();
-    setImageId(data.image_id);
-    setImageSize({ width: data.width, height: data.height });
-    setImageUrl(URL.createObjectURL(file));
-    setMasks([]);
-    setLoading(false);
-  }, []);
+  const upload = useCallback(async (file: File) => { /* ... */ }, []);
+  const segment = useCallback(async (x: number, y: number) => { /* ... */ }, [imageId, loading]);
+  const clearMasks = useCallback(() => setMasks([]), []);
+  const removeMask = useCallback((index: number) => { /* ... */ }, []);
+  const reset = useCallback(() => { /* ... */ }, [imageUrl]);
 
-  const handlePointSegment = useCallback(async (x, y) => {
-    if (!imageId || loading) return;
-    setLoading(true);
-    const res = await fetch(`${API_BASE}/api/segment`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image_id: imageId, points: [{ x, y, label: 1 }] }),
-    });
-    const data = await res.json();
-    if (data.masks.length > 0) {
-      setMasks(prev => [...prev, data.masks[0]]);
-    }
-    setLoading(false);
-  }, [imageId, loading]);
-
-  return (
-    <div className="min-h-screen bg-gray-50">
-      <Header />
-      <main className="max-w-4xl mx-auto px-4 py-8">
-        {!imageUrl ? (
-          <ImageUploader onUpload={handleUpload} loading={loading} />
-        ) : (
-          <>
-            <CanvasOverlay
-              imageUrl={imageUrl}
-              imageSize={imageSize}
-              masks={masks}
-              onPointClick={handlePointSegment}
-              loading={loading}
-            />
-            <ToolBar
-              onClear={() => setMasks([])}
-              onNewImage={() => { setImageUrl(null); setImageId(null); setMasks([]); }}
-              maskCount={masks.length}
-            />
-          </>
-        )}
-      </main>
-    </div>
-  );
+  return { imageUrl, imageSize, masks, loading, error, upload, segment, clearMasks, removeMask, reset, clearError };
 }
 ```
 
-### ImageUploader
+### SegmentCanvas — Canvas 画布
 
-```jsx
-function ImageUploader({ onUpload, loading }) {
-  const handleDrop = (e) => {
-    e.preventDefault();
-    const file = e.dataTransfer.files[0];
-    if (file?.type.startsWith('image/')) onUpload(file);
-  };
+负责图片渲染、mask 叠加、点击坐标映射：
 
-  return (
-    <div
-      onDrop={handleDrop}
-      onDragOver={e => e.preventDefault()}
-      onClick={() => document.getElementById('file-input').click()}
-      className="border-2 border-dashed border-gray-300 rounded-xl p-12
-                 text-center hover:border-blue-400 transition-colors cursor-pointer"
-    >
-      <input
-        id="file-input" type="file" accept="image/*" className="hidden"
-        onChange={e => e.target.files[0] && onUpload(e.target.files[0])}
-      />
-      <p className="text-lg font-medium text-gray-500">拖拽图片到此处，或点击上传</p>
-      <p className="text-sm text-gray-400 mt-2">支持 JPG / PNG / WebP</p>
-      {loading && <p className="mt-4 text-blue-500 animate-pulse">上传中...</p>}
-    </div>
-  );
+```typescript
+interface SegmentCanvasProps {
+  imageUrl: string;
+  imageSize: ImageSize;
+  masks: MaskResult[];
+  onPointClick: (x: number, y: number) => void;
+  loading: boolean;
 }
 ```
 
-### CanvasOverlay
+### API 层 — 类型安全封装
 
-```jsx
-function CanvasOverlay({ imageUrl, imageSize, masks, onPointClick, loading }) {
-  const canvasRef = useRef(null);
-  const imgRef = useRef(null);
-  const containerRef = useRef(null);
-
-  const COLORS = [
-    [59, 130, 246], [239, 68, 68], [34, 197, 94],
-    [249, 115, 22], [168, 85, 247],
-  ];
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !imgRef.current?.complete || !imageSize) return;
-    const ctx = canvas.getContext('2d');
-    const scale = Math.min(canvas.width / imageSize.width, canvas.height / imageSize.height);
-    const drawW = imageSize.width * scale;
-    const drawH = imageSize.height * scale;
-    const ox = (canvas.width - drawW) / 2;
-    const oy = (canvas.height - drawH) / 2;
-
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(imgRef.current, ox, oy, drawW, drawH);
-
-    masks.forEach((mask, i) => {
-      renderMask(ctx, mask.rle, imageSize, { ox, oy, scale }, COLORS[i % COLORS.length]);
-    });
-  }, [imageUrl, masks, imageSize]);
-
-  const handleClick = (e) => {
-    if (loading || !imageSize) return;
-    const canvas = canvasRef.current;
-    const rect = canvas.getBoundingClientRect();
-    const cx = (e.clientX - rect.left) * (canvas.width / rect.width);
-    const cy = (e.clientY - rect.top) * (canvas.height / rect.height);
-    const scale = Math.min(canvas.width / imageSize.width, canvas.height / imageSize.height);
-    const ox = (canvas.width - imageSize.width * scale) / 2;
-    const oy = (canvas.height - imageSize.height * scale) / 2;
-    const origX = Math.round((cx - ox) / scale);
-    const origY = Math.round((cy - oy) / scale);
-
-    if (origX >= 0 && origX < imageSize.width && origY >= 0 && origY < imageSize.height) {
-      onPointClick(origX, origY);
-    }
-  };
-
-  return (
-    <div ref={containerRef} className="relative w-full max-w-3xl mx-auto">
-      <img ref={imgRef} src={imageUrl} className="hidden" onLoad={() => {
-        const c = canvasRef.current;
-        c.width = containerRef.current.clientWidth;
-        c.height = containerRef.current.clientWidth * (imageSize.height / imageSize.width);
-      }} />
-      <canvas ref={canvasRef} onClick={handleClick}
-        className={`w-full rounded-lg border-2 border-gray-200 ${loading ? 'cursor-wait' : 'cursor-crosshair'}`}
-      />
-      {loading && (
-        <div className="absolute inset-0 flex items-center justify-center bg-black/10 rounded-lg">
-          <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin" />
-        </div>
-      )}
-    </div>
-  );
-}
+```typescript
+export async function uploadImage(file: File): Promise<UploadResponse> { /* ... */ }
+export async function segmentImage(imageId: string, points: PointInput[]): Promise<SegmentResponse> { /* ... */ }
+export async function checkHealth(): Promise<HealthResponse> { /* ... */ }
 ```
 
 ### Mask 渲染函数
 
-```javascript
-function renderMask(ctx, rle, imageSize, transform, color, opacity = 0.4) {
-  const { counts, size } = rle;
-  const [h, w] = size;
-  const { ox, oy, scale } = transform;
-
-  const tmp = document.createElement('canvas');
-  tmp.width = w; tmp.height = h;
-  const tCtx = tmp.getContext('2d');
-  const imgData = tCtx.createImageData(w, h);
-
-  let idx = 0, val = 0;
-  for (const count of counts) {
-    for (let i = 0; i < count && idx < w * h; i++, idx++) {
-      if (val === 1) {
-        const p = idx * 4;
-        imgData.data[p] = color[0];
-        imgData.data[p + 1] = color[1];
-        imgData.data[p + 2] = color[2];
-        imgData.data[p + 3] = Math.round(opacity * 255);
-      }
-    }
-    val = 1 - val;
-  }
-
-  tCtx.putImageData(imgData, 0, 0);
-  ctx.drawImage(tmp, ox, oy, w * scale, h * scale);
+```typescript
+export function renderMask(
+  ctx: CanvasRenderingContext2D,
+  rle: RLEMask,
+  transform: CanvasTransform,
+  color: [number, number, number],
+  opacity = MASK_OPACITY,
+): void {
+  // RLE 解码 → 临时 Canvas → 主 Canvas 绘制
 }
 ```
 
@@ -244,7 +141,7 @@ Canvas 点击 (clientX, clientY)
     │  减去 canvas.getBoundingClientRect()
     ▼
 Canvas 内坐标
-    │  乘以 (canvas.width / rect.width) — CSS 缩放
+    │  乘以 (canvas.width / rect.width) — CSS 缩放修正
     ▼
 Canvas 像素坐标
     │  减去 offset，除以 scale — 居中偏移 + 缩放
@@ -252,20 +149,44 @@ Canvas 像素坐标
 原图坐标 (origX, origY) → 发送给后端
 ```
 
+## 视觉设计
+
+暗黑科技感主题：
+
+- 深色背景 `#0a0a0f` + 微妙网格纹理
+- 霓虹蓝 `#00d4ff` + 紫色高光 `#a855f7`
+- 毛玻璃卡片 (`backdrop-blur` + 半透明边框)
+- JetBrains Mono (标题) + Geist Sans (正文)
+- Framer Motion 页面加载动画 + mask 列表过渡
+
 ## 页面布局
 
 ```
-┌────────────────────────────────────────────┐
-│  FastSAM Demo            [SAM 2.1 已连接]   │
-├────────────────────────────────────────────┤
-│                                             │
-│  ┌─────────────────────────────────────┐   │
-│  │                                     │   │
-│  │         Canvas 区域                  │   │
-│  │     (图片 + mask 半透明叠加)         │   │
-│  │                                     │   │
-│  └─────────────────────────────────────┘   │
-│                                             │
-│  [清除选择]  [重新上传]   已选择 3 个区域    │
-└────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│  FastSAM    Interactive Segmentation    [●] [GH] │
+├──────────────────────────────────────────────────┤
+│                                                   │
+│  ┌─────────────────────────┐ ┌─────────────────┐ │
+│  │                         │ │ 操作指南         │ │
+│  │     Canvas 画布          │ │                 │ │
+│  │   (图片 + mask 叠加)     │ │ 分割结果 [3]    │ │
+│  │                         │ │ ● 区域 1  95.2% │ │
+│  │                         │ │ ● 区域 2  87.1% │ │
+│  └─────────────────────────┘ │ ● 区域 3  92.4% │ │
+│                               │                 │ │
+│                               │ [清除] [重新上传]│ │
+│                               └─────────────────┘ │
+├──────────────────────────────────────────────────┤
+│      Next.js  TypeScript  Tailwind  FastAPI  SAM │
+└──────────────────────────────────────────────────┘
+```
+
+## 启动方式
+
+```bash
+cd frontend
+npm install
+npm run dev     # 开发模式 → http://localhost:3000
+npm run build   # 生产构建
+npm start       # 生产启动
 ```

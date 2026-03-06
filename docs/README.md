@@ -9,7 +9,7 @@
 | [architecture.md](./architecture.md) | 系统架构、技术选型、数据流 |
 | [quickstart.md](./quickstart.md) | 5 分钟快速启动指南 |
 | [api.md](./api.md) | RESTful API 接口文档 |
-| [frontend.md](./frontend.md) | React CDN + TailwindCSS 前端实现 |
+| [frontend.md](./frontend.md) | Next.js + TypeScript 前端实现 |
 | [backend.md](./backend.md) | FastAPI + SAM 2.1 后端详解 |
 | [model.md](./model.md) | SAM 2.1 模型原理与性能基准 |
 | [deployment.md](./deployment.md) | 部署方案（本地/Colab/Docker） |

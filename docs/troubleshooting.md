@@ -20,7 +20,46 @@ UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple uv sync
 
 ---
 
-## 2. SAM 2 安装问题
+## 2. Node.js / 前端相关
+
+### `node: command not found`
+
+安装 Node.js 18+：
+
+```bash
+# macOS (Homebrew)
+brew install node
+
+# 或使用 nvm
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+nvm install 18
+```
+
+### `npm install` 失败
+
+```bash
+# 清除缓存重试
+rm -rf node_modules package-lock.json
+npm install
+
+# 网络问题使用镜像
+npm config set registry https://registry.npmmirror.com
+npm install
+```
+
+### 前端端口被占用
+
+```bash
+# 检查占用
+lsof -i :3000
+
+# 使用其他端口
+npm run dev -- --port 3001
+```
+
+---
+
+## 3. SAM 2 安装问题
 
 ### `Failed to build the SAM 2 CUDA extension`
 
@@ -29,17 +68,13 @@ UV_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple uv sync
 如果想解决，安装 CUDA Toolkit：
 
 ```bash
-# 确认 nvcc 可用
 nvcc --version
-
 # 如果没有，安装对应版本的 CUDA Toolkit
-# https://developer.nvidia.com/cuda-toolkit-archive
 ```
 
 ### `ModuleNotFoundError: No module named 'sam2'`
 
 ```bash
-# SAM 2 需要从源码安装
 cd backend
 uv sync  # pyproject.toml 中已包含 sam2 依赖
 
@@ -50,7 +85,7 @@ cd /tmp/sam2 && pip install -e .
 
 ---
 
-## 3. 模型权重问题
+## 4. 模型权重问题
 
 ### 下载失败
 
@@ -65,7 +100,6 @@ curl -C - -L -o checkpoints/sam2.1_hiera_tiny.pt \
 ### 权重文件损坏
 
 ```bash
-# 检查文件大小
 ls -lh checkpoints/sam2.1_hiera_tiny.pt
 # tiny 应约 39MB, small 约 46MB, base+ 约 81MB, large 约 224MB
 
@@ -77,7 +111,7 @@ wget -O checkpoints/sam2.1_hiera_tiny.pt \
 
 ---
 
-## 4. GPU / CUDA 问题
+## 5. GPU / CUDA 问题
 
 ### 没有 GPU 也想跑
 
@@ -102,37 +136,35 @@ uv pip install torch>=2.5.1 torchvision>=0.20.1
 
 ---
 
-## 5. CORS 跨域
+## 6. API 代理 / 网络问题
 
-### 浏览器报 CORS 错误
+### 前端无法连接后端
+
+确保后端已启动并监听 8000 端口：
 
 ```bash
-# 方案一：确认 .env 中 CORS_ORIGINS=*
-# 方案二：用 HTTP 服务打开前端（不要用 file://）
-cd frontend && python -m http.server 3000
-# 访问 http://localhost:3000
+curl http://localhost:8000/api/health
+```
+
+前端通过 Next.js rewrites 代理 `/api/*` 到 `localhost:8000`，确认 `next.config.ts` 配置正确：
+
+```typescript
+async rewrites() {
+  return [{ source: '/api/:path*', destination: 'http://localhost:8000/api/:path*' }];
+}
 ```
 
 ---
 
-## 6. 坐标映射
+## 7. 坐标映射
 
 ### 点击和分割位置不对应
 
-在浏览器控制台检查：
-
-```javascript
-// CanvasOverlay 的 handleClick 中
-console.log('Canvas:', cx, cy);
-console.log('Original:', origX, origY);
-console.log('Scale:', scale, 'Offset:', ox, oy);
-```
-
-常见原因：高 DPI 屏幕需要 `devicePixelRatio` 修正、图片居中偏移计算错误。
+在浏览器控制台检查 SegmentCanvas 的坐标计算。常见原因：高 DPI 屏幕需要 `devicePixelRatio` 修正、图片居中偏移计算错误。
 
 ---
 
-## 7. 后端启动
+## 8. 后端启动
 
 ### `Address already in use`
 
@@ -149,11 +181,14 @@ uv run uvicorn app.main:app --port 8001
 
 ---
 
-## 8. 诊断脚本
+## 9. 诊断脚本
 
-`backend/diagnose.py`:
+```bash
+uv run python diagnose.py
+```
 
 ```python
+# backend/diagnose.py
 import sys
 
 def check(name, func):
@@ -172,8 +207,4 @@ import os
 ckpt = "checkpoints/sam2.1_hiera_tiny.pt"
 check("Checkpoint", lambda: f"exists={os.path.exists(ckpt)}, "
       f"size={os.path.getsize(ckpt)//1024//1024}MB" if os.path.exists(ckpt) else "missing")
-```
-
-```bash
-uv run python diagnose.py
 ```

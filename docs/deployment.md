@@ -12,70 +12,33 @@
 
 ## 方案一：本地运行（推荐）
 
+### 一键启动
+
 ```bash
+./start.sh
+```
+
+自动完成：安装依赖 → 下载模型 → 启动后端(:8000) → 启动前端(:3000) → 打开浏览器。
+
+### 手动启动
+
+```bash
+# 后端
 cd backend
 uv sync
-
-# 下载 tiny 模型（39MB，无需认证）
 mkdir -p checkpoints
 wget -O checkpoints/sam2.1_hiera_tiny.pt \
   https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
-
-# 启动
 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 
-# 打开前端
-open ../frontend/index.html
+# 前端（新终端）
+cd frontend
+npm install
+npm run dev
+# 访问 http://localhost:3000
 ```
 
-### 一键启动脚本
-
-`start.sh`:
-
-```bash
-#!/bin/bash
-set -e
-
-PROJECT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BACKEND_DIR="$PROJECT_DIR/backend"
-CKPT="$BACKEND_DIR/checkpoints/sam2.1_hiera_tiny.pt"
-CKPT_URL="https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt"
-
-# 检查 uv
-command -v uv >/dev/null 2>&1 || {
-    echo "安装 uv..."
-    curl -LsSf https://astral.sh/uv/install.sh | sh
-    source ~/.bashrc 2>/dev/null || source ~/.zshrc 2>/dev/null
-}
-
-cd "$BACKEND_DIR"
-uv sync
-
-# 下载模型
-if [ ! -f "$CKPT" ]; then
-    echo "下载 SAM 2.1 模型权重 (39MB)..."
-    mkdir -p checkpoints
-    curl -L -o "$CKPT" "$CKPT_URL"
-fi
-
-# 启动后端
-echo "启动后端..."
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-BACKEND_PID=$!
-sleep 3
-
-# 打开前端
-if [[ "$OSTYPE" == "darwin"* ]]; then
-    open "$PROJECT_DIR/frontend/index.html"
-elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
-    xdg-open "$PROJECT_DIR/frontend/index.html"
-fi
-
-echo "服务已启动！"
-echo "后端: http://localhost:8000"
-echo "API 文档: http://localhost:8000/docs"
-wait $BACKEND_PID
-```
+前端通过 Next.js rewrites 将 `/api/*` 代理到后端，无需额外 CORS 配置。
 
 ---
 
@@ -106,6 +69,8 @@ print(f"公网地址: {public_url}")
 uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
 ```
 
+> Colab 方案需要单独在本地启动前端并修改 `next.config.ts` 中的代理目标为 ngrok 地址。
+
 ---
 
 ## 方案三：Docker
@@ -113,13 +78,18 @@ uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
 ### Dockerfile
 
 ```dockerfile
-FROM python:3.12-slim
+FROM node:18-slim AS frontend-builder
+WORKDIR /frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ .
+RUN npm run build
 
+FROM python:3.12-slim
 RUN apt-get update && \
     apt-get install -y --no-install-recommends git wget && \
     rm -rf /var/lib/apt/lists/*
 
-# 安装 uv
 RUN pip install uv
 
 WORKDIR /app
@@ -133,21 +103,18 @@ RUN mkdir -p checkpoints && \
     wget -O checkpoints/sam2.1_hiera_tiny.pt \
     https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
 
-# 复制代码
+# 后端依赖
 COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync
 COPY backend/ .
-COPY frontend/ /app/static/
 
-EXPOSE 8000
-CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+# 前端构建产物
+COPY --from=frontend-builder /frontend/.next /app/frontend/.next
+COPY --from=frontend-builder /frontend/package.json /app/frontend/
+COPY --from=frontend-builder /frontend/node_modules /app/frontend/node_modules
 
-### GPU 版本
-
-```dockerfile
-FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
-# ... 其余同上，加上 CUDA 依赖
+EXPOSE 8000 3000
+CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 & cd /app/frontend && npm start -- --port 3000 & wait"]
 ```
 
 ### docker-compose.yml
@@ -156,8 +123,10 @@ FROM nvidia/cuda:12.4.0-runtime-ubuntu22.04
 version: '3.8'
 
 services:
-  app:
-    build: .
+  backend:
+    build:
+      context: .
+      target: backend
     ports:
       - "8000:8000"
     environment:
@@ -165,10 +134,16 @@ services:
       - MODEL_CFG=configs/sam2.1/sam2.1_hiera_t.yaml
       - CHECKPOINT_PATH=checkpoints/sam2.1_hiera_tiny.pt
     restart: unless-stopped
-```
 
-```bash
-docker compose up -d
+  frontend:
+    build:
+      context: .
+      target: frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    restart: unless-stopped
 ```
 
 ---

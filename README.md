@@ -4,7 +4,7 @@
 
 ## 技术栈
 
-- **后端**: FastAPI + SAM 2.1（Meta 最新分割模型，Apache 2.0 开源）
+- **后端**: FastAPI + SAM 2.1（Meta 分割模型，Apache 2.0 开源）
 - **前端**: Next.js 15 + TypeScript + Tailwind CSS v4 + Framer Motion
 - **模型**: SAM 2.1 Hiera — 支持图片/视频分割，无需申请，直接下载
 - **包管理**: uv (后端) + npm (前端)

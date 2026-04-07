@@ -25,3 +25,5 @@ backend/checkpoints/*.pt
 # OS
 .DS_Store
 Thumbs.db
+models/*.pt 、
+models/*.pt

@@ -2,6 +2,8 @@
 
 基于 SAM 2.1（Segment Anything Model 2）的交互式图像分割 Web 应用。用户上传图片后，点击任意物体即可实时分割并高亮显示。
 
+![overview](/public/Snipaste_2026-04-07_15-27-13.png)
+
 ## 技术栈
 
 - **后端**: FastAPI + SAM 2.1（Meta 分割模型，Apache 2.0 开源）
@@ -18,6 +20,12 @@
 - **RLE 压缩传输**: mask 数据压缩率 > 98%
 - **导出功能**: 支持导出原图、叠加效果、仅掩码
 - **无需申请**: 模型权重直接下载，Apache 2.0 许可
+
+## 效果展示
+
+| 叠加效果 | 掩码输出 |
+|:---:|:---:|
+| ![overlay](public/Snipaste_2026-04-07_14-18-56_original_overlay.png) | ![masks](public/Snipaste_2026-04-07_14-18-56_original_masks.png) |
 
 ## 快速开始
 

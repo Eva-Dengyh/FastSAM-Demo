@@ -62,7 +62,7 @@ from pyngrok import ngrok
 import uvicorn
 
 nest_asyncio.apply()
-ngrok.set_auth_token("YOUR_NGROK_TOKEN")  # https://ngrok.com 免费注册
+ngrok.set_auth_token("YOUR_NGROK_TOKEN")  # https://ngrok 免费注册
 public_url = ngrok.connect(8000)
 print(f"公网地址: {public_url}")
 
@@ -73,77 +73,69 @@ uvicorn.run("app.main:app", host="0.0.0.0", port=8000)
 
 ---
 
-## 方案三：Docker
+## 方案三：Docker（推荐）
 
-### Dockerfile
+### 前置要求
 
-```dockerfile
-FROM node:18-slim AS frontend-builder
-WORKDIR /frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend/ .
-RUN npm run build
+- Docker
+- docker-compose
+- 模型权重文件
 
-FROM python:3.12-slim
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends git wget && \
-    rm -rf /var/lib/apt/lists/*
+### 快速开始
 
-RUN pip install uv
+```bash
+# 1. 克隆项目
+git clone https://github.com/Eva-Dengyh/FastSAM-Demo.git
+cd FastSAM-Demo
 
-WORKDIR /app
+# 2. 下载模型（只需一次）
+mkdir -p models
+wget -O models/sam2.1_hiera_tiny.pt \
+  https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
 
-# 安装 SAM 2
-RUN git clone https://github.com/facebookresearch/sam2.git /tmp/sam2 && \
-    cd /tmp/sam2 && pip install -e .
-
-# 下载模型
-RUN mkdir -p checkpoints && \
-    wget -O checkpoints/sam2.1_hiera_tiny.pt \
-    https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
-
-# 后端依赖
-COPY backend/pyproject.toml backend/uv.lock ./
-RUN uv sync
-COPY backend/ .
-
-# 前端构建产物
-COPY --from=frontend-builder /frontend/.next /app/frontend/.next
-COPY --from=frontend-builder /frontend/package.json /app/frontend/
-COPY --from=frontend-builder /frontend/node_modules /app/frontend/node_modules
-
-EXPOSE 8000 3000
-CMD ["sh", "-c", "uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 & cd /app/frontend && npm start -- --port 3000 & wait"]
+# 3. 启动
+docker-compose up --build
 ```
 
-### docker-compose.yml
+### 访问
+
+- 前端：http://localhost:3001
+- 后端 API：http://localhost:8001/docs
+
+### 常用命令
+
+```bash
+# 停止
+docker-compose down
+
+# 重启
+docker-compose restart
+
+# 查看日志
+docker-compose logs -f
+```
+
+### 端口说明
+
+| 服务 | 内部端口 | 外部端口 |
+|------|---------|---------|
+| 前端 | 3000 | 3001 |
+| 后端 | 8000 | 8001 |
+
+使用 3001/8001 是为了避免与本地开发端口冲突。
+
+### 自定义端口
+
+如需修改端口，编辑 `docker-compose.yml`：
 
 ```yaml
-version: '3.8'
-
 services:
   backend:
-    build:
-      context: .
-      target: backend
     ports:
-      - "8000:8000"
-    environment:
-      - CORS_ORIGINS=*
-      - MODEL_CFG=configs/sam2.1/sam2.1_hiera_t.yaml
-      - CHECKPOINT_PATH=checkpoints/sam2.1_hiera_tiny.pt
-    restart: unless-stopped
-
+      - "8002:8000"  # 改为 8002
   frontend:
-    build:
-      context: .
-      target: frontend
     ports:
-      - "3000:3000"
-    depends_on:
-      - backend
-    restart: unless-stopped
+      - "3002:3000"  # 改为 3002
 ```
 
 ---

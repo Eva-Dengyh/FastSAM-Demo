@@ -20,6 +20,28 @@
 
 ## 快速开始
 
+### Docker 部署（推荐）
+
+```bash
+# 克隆项目
+git clone https://github.com/Eva-Dengyh/FastSAM-Demo.git
+cd FastSAM-Demo
+
+# 下载模型权重（只需一次）
+mkdir -p models
+wget -O models/sam2.1_hiera_tiny.pt \
+  https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
+
+# 一键启动
+docker-compose up --build
+```
+
+访问：
+- 前端：http://localhost:3001
+- 后端 API：http://localhost:8001/docs
+
+### 本地开发
+
 ```bash
 # 克隆项目
 git clone https://github.com/Eva-Dengyh/FastSAM-Demo.git
@@ -47,7 +69,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd ../frontend && npm install && npm run dev
 ```
 
-前端 http://localhost:3000 · 后端 API 文档 http://localhost:8000/docs
+前端 http://localhost:3001 · 后端 API 文档 http://localhost:8001/docs
 
 详细步骤见 [docs/quickstart.md](docs/quickstart.md)。
 
@@ -58,9 +80,8 @@ FastSAM-Demo/
 ├── backend/              # FastAPI 后端
 │   ├── app/              # 应用代码 (routers/services/schemas/utils)
 │   ├── tests/            # 单元测试
-│   ├── checkpoints/      # 模型权重
-│   ├── pyproject.toml    # uv 依赖管理
-│   └── uv.lock
+│   ├── Dockerfile        # 后端容器镜像
+│   └── pyproject.toml    # uv 依赖管理
 ├── frontend/             # Next.js + TypeScript
 │   ├── src/
 │   │   ├── app/          # App Router 页面
@@ -69,7 +90,10 @@ FastSAM-Demo/
 │   │   ├── lib/          # API 封装 + 工具函数
 │   │   └── types/        # TypeScript 类型定义
 │   ├── next.config.ts    # API 代理配置
-│   └── package.json
+│   └── Dockerfile        # 前端容器镜像
+├── models/               # 模型权重（需手动下载）
+├── docker-compose.yml    # Docker 服务编排
+├── .dockerignore         # Docker 构建忽略文件
 ├── docs/                 # 完整技术文档
 ├── start.sh              # 一键启动脚本
 └── .env.example

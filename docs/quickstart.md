@@ -154,4 +154,26 @@ INFO:     Model loaded on cuda  # 或 cpu
 | 首次请求慢 | 模型启动时已预加载，首次 `set_image` 需 ~1-3s |
 | `Failed to build SAM 2 CUDA extension` | 可忽略，不影响主要功能 |
 
+## Docker 部署（推荐生产环境）
+
+如果只需要快速部署而非本地开发，推荐使用 Docker：
+
+```bash
+# 1. 克隆项目
+git clone https://github.com/Eva-Dengyh/FastSAM-Demo.git
+cd FastSAM-Demo
+
+# 2. 下载模型
+mkdir -p models
+wget -O models/sam2.1_hiera_tiny.pt \
+  https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_tiny.pt
+
+# 3. 启动
+docker-compose up --build
+```
+
+访问：
+- 前端：http://localhost:3001
+- 后端 API：http://localhost:8001/docs
+
 更多问题见 [troubleshooting.md](./troubleshooting.md)。

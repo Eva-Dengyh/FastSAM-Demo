@@ -5,6 +5,7 @@ import { Header } from '@/components/Header';
 import { ImageUploader } from '@/components/ImageUploader';
 import { SegmentCanvas } from '@/components/SegmentCanvas';
 import { ControlPanel } from '@/components/ControlPanel';
+import { ExportButton } from '@/components/ExportButton';
 import { useHealthCheck } from '@/hooks/useHealthCheck';
 import { useSegmentation } from '@/hooks/useSegmentation';
 
@@ -22,6 +23,7 @@ export default function Home() {
     removeMask,
     reset,
     clearError,
+    currentImageName,
   } = useSegmentation();
 
   const hasImage = !!imageUrl && !!imageSize;
@@ -107,6 +109,18 @@ export default function Home() {
           )}
         </div>
       </footer>
+
+      {/* 导出按钮 */}
+      {hasImage && masks.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50">
+          <ExportButton
+            imageUrl={imageUrl}
+            imageSize={imageSize!}
+            masks={masks}
+            currentImageName={currentImageName}
+          />
+        </div>
+      )}
     </div>
   );
 }

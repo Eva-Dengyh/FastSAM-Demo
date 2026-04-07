@@ -11,6 +11,7 @@ export function useSegmentation() {
   const [masks, setMasks] = useState<MaskResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentImageName, setCurrentImageName] = useState<string>('');
 
   const upload = useCallback(async (file: File) => {
     setLoading(true);
@@ -19,7 +20,9 @@ export function useSegmentation() {
       const data = await uploadImage(file);
       setImageId(data.image_id);
       setImageSize({ width: data.width, height: data.height });
-      setImageUrl(URL.createObjectURL(file));
+      setCurrentImageName(file.name);
+      const url = URL.createObjectURL(file);
+      setImageUrl(url);
       setMasks([]);
     } catch (err) {
       setError(err instanceof Error ? err.message : '上传失败');
@@ -60,6 +63,7 @@ export function useSegmentation() {
     setImageSize(null);
     setMasks([]);
     setError(null);
+    setCurrentImageName('');
   }, [imageUrl]);
 
   return {
@@ -74,5 +78,6 @@ export function useSegmentation() {
     removeMask,
     reset,
     clearError: () => setError(null),
+    currentImageName,
   };
 }

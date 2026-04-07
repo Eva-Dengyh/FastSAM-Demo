@@ -16,6 +16,7 @@
 - **CPU/GPU 双模式**: tiny 模型 CPU 也能跑
 - **多物体选择**: 不同颜色标注多个分割区域
 - **RLE 压缩传输**: mask 数据压缩率 > 98%
+- **导出功能**: 支持导出原图、叠加效果、仅掩码
 - **无需申请**: 模型权重直接下载，Apache 2.0 许可
 
 ## 快速开始
@@ -69,7 +70,7 @@ uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
 cd ../frontend && npm install && npm run dev
 ```
 
-前端 http://localhost:3001 · 后端 API 文档 http://localhost:8001/docs
+前端 http://localhost:3000 · 后端 API 文档 http://localhost:8000/docs
 
 详细步骤见 [docs/quickstart.md](docs/quickstart.md)。
 

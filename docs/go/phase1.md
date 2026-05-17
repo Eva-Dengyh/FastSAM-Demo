@@ -1,6 +1,6 @@
 # Phase 1 实现纪要：单 worker + Gateway 链路打通
 
-> 对应设计文档 [docs/gateway-design.md](../gateway-design.md) 第 5.1 节。本文档记录 Phase 1 实际交付物、关键技术决策、验证清单和留给后续阶段的事。
+> Gateway 自身的运行契约（路由、错误码、配置项）见 [`gateway/README.md`](../../gateway/README.md)。本文档记录 Phase 1 实际交付物、关键技术决策、验证清单和留给后续阶段的事。
 
 ## 1. 目标回顾
 

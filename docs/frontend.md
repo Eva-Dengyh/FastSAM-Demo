@@ -57,21 +57,38 @@ app/         → 页面层（组合组件）
 
 ### API 代理
 
-通过 Next.js rewrites 将 `/api/*` 代理到后端，避免 CORS 问题：
+API 请求的目标地址通过环境变量 `NEXT_PUBLIC_API_URL` 注入（默认指向 Gateway）：
 
 ```typescript
-// next.config.ts
-const nextConfig: NextConfig = {
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://localhost:8000/api/:path*',
-      },
-    ];
-  },
-};
+// lib/api.ts
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? '';
+
+export async function uploadImage(file: File): Promise<UploadResponse> {
+  const res = await fetchWithRetry(`${BASE_URL}/api/upload`, { method: 'POST', body: form });
+  // ...
+}
 ```
+
+部署形态：
+
+| 环境 | `NEXT_PUBLIC_API_URL` |
+|------|------------------------|
+| 本地 `start.sh` | `http://localhost:8080`（Go Gateway） |
+| Docker | `http://gateway:8080`（容器名解析） |
+| Colab + ngrok | ngrok 暴露的 backend 公网地址 |
+
+> 不再使用 Next.js rewrites——网关已经处理跨服务路由 + 限流 + 粘性会话，Next.js 不需要再插一层代理。
+
+### 错误恢复（410 / 429）
+
+`lib/api.ts` 内置了两类网关错误的自动处理：
+
+| 错误 | 错误子类 | 处理 |
+|------|---------|------|
+| 410 SESSION_EXPIRED | `SessionExpiredError` | 上抛给 `useSegmentation`，清掉 `imageId` / `masks` 并提示用户重新上传 |
+| 429 QUEUE_FULL | `RateLimitedError`（携带 `retryAfterMs`） | `fetchWithRetry` 按响应头 `Retry-After` 退避，指数回退最多 3 次 |
+
+效果：worker 故障切换或高并发时，业务组件几乎感知不到底层的瞬时错误。
 
 ## 核心组件
 

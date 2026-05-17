@@ -6,6 +6,7 @@
 
 - Python 3.10+
 - Node.js 18+
+- Go 1.22+（推理网关）
 - uv（Python 包管理器）
 - 现代浏览器（Chrome / Firefox / Safari）
 - GPU 可选（推荐，但 tiny 模型 CPU 也能跑）
@@ -20,7 +21,10 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 uv --version
 node --version   # 需要 18+
 npm --version
+go version       # 需要 1.22+（推理网关用）
 ```
+
+> Go 未安装时去 https://go.dev/dl/ 选对应平台的安装包；macOS 也可以 `brew install go`。
 
 ## 第二步：克隆项目
 
@@ -101,27 +105,38 @@ cd FastSAM-Demo
 ./start.sh
 ```
 
-自动安装依赖、下载模型、启动前后端，并打开浏览器。
+自动安装依赖、下载模型、起 2 个 backend（worker-0 / worker-1）+ Gateway + 前端，并打开浏览器。
 
 ### 方式二：分别启动
 
 ```bash
-# 终端 1：启动后端
+# 终端 1：起两个 backend 进程（多 worker 形态）
 cd backend
-uv run uvicorn app.main:app --host 0.0.0.0 --port 8000
+WORKER_ID=worker-0 MAX_INFLIGHT=2 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
+WORKER_ID=worker-1 MAX_INFLIGHT=2 uv run uvicorn app.main:app --host 0.0.0.0 --port 8002 &
 
-# 终端 2：启动前端
-cd frontend
-npm run dev
+# 终端 2：启动 Gateway
+cd ../gateway
+go mod download
+go run ./cmd/gateway -config configs/gateway.dev.yaml
+
+# 终端 3：启动前端，API 指向 Gateway
+cd ../frontend
+NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 ```
 
 看到以下输出说明成功：
 
 ```
-# 后端
-INFO:     Uvicorn running on http://0.0.0.0:8000
+# backend-0 / backend-1
+INFO:     Uvicorn running on http://0.0.0.0:8000  /  http://0.0.0.0:8002
 INFO:     Loading SAM 2.1 model (hiera_tiny)...
 INFO:     Model loaded on cuda  # 或 cpu
+
+# Gateway
+INF gateway started workers=2
+INF worker recovered passes=2 worker_id=worker-0
+INF worker recovered passes=2 worker_id=worker-1
 
 # 前端
 ▲ Next.js (turbopack)
@@ -130,7 +145,11 @@ INFO:     Model loaded on cuda  # 或 cpu
 
 验证：
 - 前端：http://localhost:3000
-- 后端 API 文档：http://localhost:8000/docs
+- Gateway 健康检查：http://localhost:8080/api/health （应 `healthy_workers: 2`）
+- Gateway 指标：http://localhost:8080/metrics
+- 直连 backend Swagger：http://localhost:8000/docs 或 http://localhost:8002/docs
+
+> 等 ~10-15s 健康探活完成（每个 worker 需要连续 2 次成功），`healthy_workers` 才会变 2。
 
 ## 开始使用
 
@@ -148,11 +167,23 @@ INFO:     Model loaded on cuda  # 或 cpu
 |------|----------|
 | `uv: command not found` | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
 | `node: command not found` | 安装 Node.js 18+ |
+| `go: command not found` | 安装 Go 1.22+（https://go.dev/dl/，macOS 可 `brew install go`） |
 | 模型下载失败 | 检查网络，或使用代理下载 |
 | 前端 3000 端口被占用 | `npm run dev -- --port 3001` |
-| 后端 8000 端口被占用 | `lsof -i :8000` 找到占用进程并关闭 |
-| 首次请求慢 | 模型启动时已预加载，首次 `set_image` 需 ~1-3s |
+| 8000/8002/8080 端口被占用 | `lsof -i :8080` 找到占用进程并关闭 |
+| Gateway `healthy_workers: 0` | 等 ~15s 健康探活；仍是 0 检查 backend 日志和 `gateway/configs/gateway.dev.yaml` 的 URL |
+| 首次请求慢 | 模型在 lifespan 中预加载，首次 `set_image` 需 ~1-3s |
 | `Failed to build SAM 2 CUDA extension` | 可忽略，不影响主要功能 |
+
+## 多 worker 验证
+
+启动后用脚本快速验证负载均衡 + 粘性路由：
+
+```bash
+./scripts/verify-multiworker.sh
+```
+
+会输出 8 次 upload 的 `X-Worker-Id` 分布，以及同一 `image_id` 的 5 次 segment 是否全部命中同一个 worker。详细解读见 [go/phase2.md](./go/phase2.md#4-验证脚本)。
 
 ## Docker 部署（推荐生产环境）
 
@@ -174,6 +205,9 @@ docker-compose up --build
 
 访问：
 - 前端：http://localhost:3001
-- 后端 API：http://localhost:8001/docs
+- Gateway：http://localhost:8080/api/health
+- Gateway 指标：http://localhost:8080/metrics
+
+> Docker 形态下，backend-0 / backend-1 容器仅 expose 不映射端口，所有 API 都从 Gateway 进。
 
 更多问题见 [troubleshooting.md](./troubleshooting.md)。

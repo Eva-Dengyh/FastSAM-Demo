@@ -1,6 +1,6 @@
 # Phase 2 实现纪要：多 worker 横向扩展
 
-> 对应设计文档 [docs/gateway-design.md](../gateway-design.md) 第 5.2 节。本阶段把 Gateway 真正"值钱"的能力——粘性路由 + 负载均衡——拉出来用，证明它不是单 worker 形态下的过度设计。
+> Gateway 自身的运行契约（路由、错误码、配置项）见 [`gateway/README.md`](../../gateway/README.md)。本阶段把 Gateway 真正"值钱"的能力——粘性路由 + 负载均衡——拉出来用，证明它不是单 worker 形态下的过度设计。
 
 ## 1. 这一阶段要回答的问题
 

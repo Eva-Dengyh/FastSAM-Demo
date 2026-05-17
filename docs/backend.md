@@ -1,6 +1,10 @@
 # 后端技术文档
 
-后端基于 FastAPI，使用 uv 管理依赖，集成 SAM 2.1 进行图像分割。
+后端基于 FastAPI，使用 uv 管理依赖，集成 SAM 2.1 进行图像分割。**本服务以「单 worker 进程」存在，多 worker 横向扩展由前面的 [Go 推理网关](../gateway/README.md) 调度**，所以后端只关心：
+
+- 服务好自己的推理请求
+- 上报清晰的健康状态给网关
+- 把 `WORKER_ID` 写进响应头，让网关能做粘性路由
 
 ## 技术栈
 
@@ -13,6 +17,17 @@
 | Pillow | 10.3+ | 图像 I/O |
 | NumPy | 1.26+ | 数值计算 |
 | uv | latest | 包管理器 |
+
+## 与 Gateway 的交互契约
+
+| 关注点 | 实现 |
+|--------|------|
+| 节点标识 | 环境变量 `WORKER_ID`（默认 hostname），通过响应头 `X-Worker-Id` 暴露 |
+| 并发上限兜底 | `sam_service.inference_limit = asyncio.Semaphore(MAX_INFLIGHT)`，upload / segment 推理调用包 `async with` |
+| 健康检查 | `GET /api/health` 返回 `worker_id` / `model_loaded` / GPU 显存，网关周期探活 |
+| 跨服务 trace | `trace_id_middleware` 读 `X-Request-Id` 写入 `contextvars.ContextVar`，自定义 `TraceIDFilter` 把 `trace_id` 注入每条日志 |
+
+详细决策见 [`docs/go/phase1.md` 第 3 节](./go/phase1.md#3-关键技术决策) 与 [phase2.md 第 8.2 节](./go/phase2.md#82-x-request-id-跨服务-trace)。
 
 ## uv 项目管理
 

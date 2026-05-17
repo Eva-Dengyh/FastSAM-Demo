@@ -140,23 +140,82 @@ uv pip install torch>=2.5.1 torchvision>=0.20.1
 
 ### 前端无法连接后端
 
-确保后端已启动并监听 8000 端口：
+确认整条链路：前端 → Gateway → backend。
 
 ```bash
-curl http://localhost:8000/api/health
+# 1. backend 直连
+curl http://localhost:8000/api/health   # worker-0
+curl http://localhost:8002/api/health   # worker-1
+
+# 2. Gateway 自检
+curl http://localhost:8080/api/health
+# 期望: healthy_workers >= 1
 ```
 
-前端通过 Next.js rewrites 代理 `/api/*` 到 `localhost:8000`，确认 `next.config.ts` 配置正确：
+前端通过 `NEXT_PUBLIC_API_URL` 指向 Gateway，本地开发 `start.sh` 已自动注入；如果手动启动，确认环境变量：
 
-```typescript
-async rewrites() {
-  return [{ source: '/api/:path*', destination: 'http://localhost:8000/api/:path*' }];
-}
+```bash
+NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev
 ```
 
 ---
 
-## 7. 坐标映射
+## 7. Go / Gateway 相关
+
+### `go: command not found`
+
+安装 Go 1.22+：
+
+```bash
+# macOS
+brew install go
+
+# 其他平台见 https://go.dev/dl/
+```
+
+### `go mod download` 网络失败
+
+```bash
+# 走代理
+export GOPROXY=https://goproxy.cn,direct
+cd gateway && go mod download
+```
+
+### Gateway 启动后 `healthy_workers: 0`
+
+最常见原因是 backend 未起或地址不对。
+
+```bash
+# 1. 看 Gateway 日志里 health 探活的报错
+#    (zerolog: "health probe failed")
+
+# 2. 校对配置里的 worker URL 与实际 backend 监听地址
+cat gateway/configs/gateway.dev.yaml   # 本地用
+cat gateway/configs/gateway.yaml       # 容器用
+
+# 3. 直连 backend 看是否响应
+curl http://localhost:8000/api/health
+```
+
+通常需要等 ~10-15s（每个 worker 连续 2 次成功探活）才会上线。
+
+### 经常出现 429 QUEUE_FULL
+
+调大 `gateway.yaml` 里的 `workers[].max_inflight` 或 `max_queue`；前端 `lib/api.ts` 已对 429 做退避重试，业务层不会看到。
+
+### segment 返回 410 SESSION_EXPIRED
+
+`image_id` 在 Gateway 的会话表里找不到。常见诱因：
+
+- 命中的 worker 被摘除（看 Gateway 日志 `worker marked unhealthy`）
+- 超出 `session_ttl_seconds`
+- Gateway 重启（会话存在进程内存）
+
+前端层会自动引导用户重新上传，无需手动处理。
+
+---
+
+## 8. 坐标映射
 
 ### 点击和分割位置不对应
 
@@ -164,12 +223,12 @@ async rewrites() {
 
 ---
 
-## 8. 后端启动
+## 9. 后端启动
 
 ### `Address already in use`
 
 ```bash
-lsof -i :8000
+lsof -i :8000     # 或 :8002 / :8080
 kill -9 <PID>
 # 或换端口
 uv run uvicorn app.main:app --port 8001
@@ -181,7 +240,7 @@ uv run uvicorn app.main:app --port 8001
 
 ---
 
-## 9. 诊断脚本
+## 10. 诊断脚本
 
 ```bash
 uv run python diagnose.py

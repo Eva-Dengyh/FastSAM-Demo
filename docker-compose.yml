@@ -1,12 +1,9 @@
 services:
-  backend:
+  backend-0:
     build:
       context: .
       dockerfile: backend/Dockerfile
-    container_name: fastsam-backend
-    # 默认不再对外暴露端口；通过 Gateway 访问。需要直连调试时取消注释。
-    # ports:
-    #   - "8001:8000"
+    container_name: fastsam-backend-0
     expose:
       - "8000"
     volumes:
@@ -19,6 +16,23 @@ services:
       - PYTHONUNBUFFERED=1
     restart: unless-stopped
 
+  backend-1:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: fastsam-backend-1
+    expose:
+      - "8000"
+    volumes:
+      - ./models:/app/models
+    environment:
+      - MODEL_PATH=/app/models/sam2.1_hiera_tiny.pt
+      - CHECKPOINT_PATH=/app/models/sam2.1_hiera_tiny.pt
+      - WORKER_ID=worker-1
+      - MAX_INFLIGHT=2
+      - PYTHONUNBUFFERED=1
+    restart: unless-stopped
+
   gateway:
     build:
       context: ./gateway
@@ -27,7 +41,8 @@ services:
     ports:
       - "8080:8080"
     depends_on:
-      - backend
+      - backend-0
+      - backend-1
     restart: unless-stopped
 
   frontend:
@@ -38,7 +53,6 @@ services:
     ports:
       - "3001:3000"
     environment:
-      # 前端 Next.js rewrites 通过 Gateway 而非直连 backend
       - NEXT_PUBLIC_API_URL=http://gateway:8080
     depends_on:
       - gateway

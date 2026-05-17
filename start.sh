@@ -10,7 +10,7 @@ CKPT_URL="https://dl.fbaipublicfiles.com/segment_anything_2/092824/sam2.1_hiera_
 
 cleanup() {
     echo "正在停止服务..."
-    kill $BACKEND_PID $GATEWAY_PID $FRONTEND_PID 2>/dev/null || true
+    kill $BACKEND0_PID $BACKEND1_PID $GATEWAY_PID $FRONTEND_PID 2>/dev/null || true
     exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -56,19 +56,24 @@ echo "安装前端依赖..."
 cd "$FRONTEND_DIR"
 npm install --silent
 
-# 启动后端（worker_id 固定，方便观察粘性路由）
-echo "启动后端服务（:8000）..."
+# 启动两个 backend（同一台机，但不同进程，验证 Gateway 多 worker 调度）
+# 注意：本地两进程共享同一块 CPU/GPU，吞吐不会真正翻倍——本阶段验证的是【调度正确性】
+echo "启动 backend-0（:8000, WORKER_ID=worker-0）..."
 cd "$BACKEND_DIR"
 WORKER_ID=worker-0 MAX_INFLIGHT=2 uv run uvicorn app.main:app --host 0.0.0.0 --port 8000 &
-BACKEND_PID=$!
+BACKEND0_PID=$!
 
-# 启动 Gateway（:8080），用 dev 配置直连 localhost backend
+echo "启动 backend-1（:8002, WORKER_ID=worker-1）..."
+WORKER_ID=worker-1 MAX_INFLIGHT=2 uv run uvicorn app.main:app --host 0.0.0.0 --port 8002 &
+BACKEND1_PID=$!
+
+# 启动 Gateway（:8080），用 dev 配置（两 worker 指向 localhost:8000 / 8002）
 echo "启动 Gateway 服务（:8080）..."
 cd "$GATEWAY_DIR"
 go run ./cmd/gateway -config "$GATEWAY_DIR/configs/gateway.dev.yaml" &
 GATEWAY_PID=$!
 
-# 启动前端开发服务器，rewrites 指向 Gateway
+# 启动前端，rewrites 指向 Gateway
 echo "启动前端服务（:3000，API → Gateway）..."
 cd "$FRONTEND_DIR"
 NEXT_PUBLIC_API_URL=http://localhost:8080 npm run dev -- --port 3000 &
@@ -85,12 +90,13 @@ fi
 
 echo ""
 echo "=================================="
-echo "  FastSAM Demo 已启动"
+echo "  FastSAM Demo 已启动（Phase 2 多 worker）"
 echo "  前端:        http://localhost:3000"
 echo "  Gateway:     http://localhost:8080/api/health"
 echo "  Gateway 指标: http://localhost:8080/metrics"
-echo "  后端直连:    http://localhost:8000/docs"
+echo "  backend-0:   http://localhost:8000/docs"
+echo "  backend-1:   http://localhost:8002/docs"
 echo "  按 Ctrl+C 停止"
 echo "=================================="
 
-wait $BACKEND_PID $GATEWAY_PID $FRONTEND_PID
+wait $BACKEND0_PID $BACKEND1_PID $GATEWAY_PID $FRONTEND_PID

@@ -1,5 +1,5 @@
-# 本地开发配置：backend 直连 localhost
-# 启动方式：./start.sh 已自动使用此文件
+# 本地开发配置：./start.sh 用此文件
+# 两个 backend 进程：worker-0 在 8000，worker-1 在 8002
 
 listen: ":8080"
 api_prefix: "/api"
@@ -7,6 +7,10 @@ api_prefix: "/api"
 workers:
   - id: "worker-0"
     url: "http://localhost:8000"
+    max_inflight: 2
+    max_queue: 32
+  - id: "worker-1"
+    url: "http://localhost:8002"
     max_inflight: 2
     max_queue: 32
 

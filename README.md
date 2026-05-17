@@ -114,6 +114,7 @@ FastSAM-Demo/
 |------|------|
 | [架构设计](docs/architecture.md) | 系统架构、技术选型、数据流 |
 | [网关设计](docs/gateway-design.md) | Go 网关层：并发控流、粘性路由、横向扩展演进 |
+| [网关 Phase 1/2 纪要](docs/go/) | 各阶段实施过程、关键决策、验证清单 |
 | [快速启动](docs/quickstart.md) | 5 分钟跑通指南 |
 | [API 文档](docs/api.md) | RESTful 接口详细说明 |
 | [前端文档](docs/frontend.md) | Next.js + TypeScript 前端实现 |

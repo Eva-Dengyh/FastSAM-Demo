@@ -4,13 +4,15 @@ listen: ":8080"
 # 业务前缀（前端走 /api/* 进来）
 api_prefix: "/api"
 
-# 后端 worker 列表（Phase 1 单 worker；扩多 worker 时往这里加）
+# 后端 worker 列表（docker-compose 形态，按容器名访问）
 workers:
   - id: "worker-0"
-    url: "http://backend:8000"
-    # 每个 worker 同时跑的推理数（与 Python 端 Semaphore 同值）
+    url: "http://backend-0:8000"
     max_inflight: 2
-    # 每个 worker 的有界队列容量（超过立刻 429）
+    max_queue: 32
+  - id: "worker-1"
+    url: "http://backend-1:8000"
+    max_inflight: 2
     max_queue: 32
 
 # 单个请求的最大处理超时（包含队列等待 + 上游推理）

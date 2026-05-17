@@ -1,0 +1,22 @@
+# 本地开发配置：backend 直连 localhost
+# 启动方式：./start.sh 已自动使用此文件
+
+listen: ":8080"
+api_prefix: "/api"
+
+workers:
+  - id: "worker-0"
+    url: "http://localhost:8000"
+    max_inflight: 2
+    max_queue: 32
+
+request_timeout_seconds: 60
+session_ttl_seconds: 3600
+
+health:
+  interval_seconds: 5
+  timeout_seconds: 2
+  unhealthy_threshold: 3
+  healthy_threshold: 2
+
+log_level: "info"

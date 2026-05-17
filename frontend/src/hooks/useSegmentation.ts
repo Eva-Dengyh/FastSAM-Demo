@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useState } from 'react';
-import { segmentImage, uploadImage } from '@/lib/api';
+import { segmentImage, SessionExpiredError, uploadImage } from '@/lib/api';
 import type { ImageSize, MaskResult } from '@/types';
 
 export function useSegmentation() {
@@ -42,7 +42,15 @@ export function useSegmentation() {
           setMasks((prev) => [...prev, data.masks[0]]);
         }
       } catch (err) {
-        setError(err instanceof Error ? err.message : '分割失败');
+        // 网关返回 410 = image_id 已失效（worker 重启 / TTL 过期）
+        // 主动清掉本地会话状态，提示用户重传，避免后续点击继续报错
+        if (err instanceof SessionExpiredError) {
+          setImageId(null);
+          setMasks([]);
+          setError('图片会话已过期，请重新上传');
+        } else {
+          setError(err instanceof Error ? err.message : '分割失败');
+        }
       } finally {
         setLoading(false);
       }

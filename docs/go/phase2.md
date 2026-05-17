@@ -206,13 +206,57 @@ Phase 2 维持 polling。
 
 ---
 
-## 8. 下一步（Phase 3 预告）
+## 8. Phase 2 收尾改动
 
-- 用 Redis 共享 SessionTable，让 Gateway 自身可平行扩展
-- worker 配置加权重，支持异构算力
-- 请求级 `X-Request-Id` 贯穿 Gateway → backend，统一 trace
-- 前端补 410/429 自动恢复
-- 加入 `embedding_cache_hits_total` 指标，量化粘性路由收益
-- 引入 `vegeta` / `k6` 做正式压测，画 P50/P95/P99 对比图
+完成核心调度验证后，又补了两件"如果不做，演示会翻车或排查会困难"的事。这两件不属于 Phase 3 范围——是 Phase 2 该完结的尾巴。
 
-Phase 3 不是"为了做而做"——只在真要上生产时再推进。当前 Phase 2 已经足以向领导演示 Gateway 的工程价值。
+### 8.1 前端 410 / 429 自动恢复
+
+**改动文件**：`frontend/src/lib/api.ts`、`frontend/src/hooks/useSegmentation.ts`
+
+**做法**：
+
+- `api.ts` 新增两个错误子类：`SessionExpiredError`（410）、`RateLimitedError`（429，携带 `retryAfterMs`）
+- 包了一层 `fetchWithRetry`：429 时按响应头 `Retry-After` 退避，指数回退最多 3 次；网络错误同样退避
+- 410 一次性上抛——hook 拿到后清掉 `imageId` / `masks`，显示"图片会话已过期，请重新上传"
+
+**效果**：
+
+- worker 切换瞬间用户点击分割不再看到红色 Error，而是被引导重新上传
+- 高并发下网关返回 429 不再让前端报错——客户端默默退避后续 segment 请求成功为止
+
+### 8.2 X-Request-Id 跨服务 trace
+
+**改动文件**：`gateway/internal/middleware/middleware.go`、`backend/app/main.py`
+
+**做法**：
+
+- Gateway 入口 middleware 取 / 生成 trace_id（16 字节 hex），三处使用：
+  1. `r.Header.Set("X-Request-Id", ...)` — 通过 ReverseProxy 透传给上游
+  2. `w.Header().Set("X-Request-Id", ...)` — 客户端能拿到这次请求的 ID，报障时回报
+  3. 写进 zerolog `trace_id` 字段 — Gateway 这一侧的日志都带它
+- Backend 加 `trace_id_middleware`：读 header → 写入 `contextvars.ContextVar` → 自定义 `TraceIDFilter` 在 logging handler 上把 `trace_id` 注入每条 LogRecord → 日志 format 里 `[trace=%(trace_id)s]` 自动渲染
+
+**效果**：
+
+跨进程同一个请求，两侧日志一行 ID 串起来：
+
+```
+# Gateway
+INF http trace_id=dafc7acb1102083dda0da4e66874ccc5 status=200 elapsed=0.42s
+
+# Backend
+2026-... [trace=dafc7acb1102083dda0da4e66874ccc5] Segment: image_id=abc points=1 masks=3
+```
+
+后续排查从前端报障的 trace_id 出发，能直接定位到具体 worker 上的具体推理调用。
+
+### 8.3 验证
+
+- ✅ `go build ./... && go vet ./...` 干净
+- ✅ 前端 `npx tsc --noEmit` 干净
+- ✅ 不带 X-Request-Id 调用 → Gateway 自动生成，响应头与日志 trace_id 一致
+- ✅ 自带 X-Request-Id 调用 → Gateway 原样透传到日志和响应头
+- ⏳ 端到端验证（前端 → Gateway → backend）：等 backend 重启后在浏览器实测，DevTools Network 响应头看 `X-Request-Id`，去 backend 日志 `grep trace=<id>` 应能找到对应请求
+
+至此 Phase 2 真正闭环。再往下做的事都在 [phase3-未启动] 范围，建议等真上生产再启动。

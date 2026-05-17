@@ -1,4 +1,6 @@
+import contextvars
 import logging
+import uuid
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -9,10 +11,24 @@ from app.config import settings
 from app.routers import health, segment, upload
 from app.services.sam_service import sam_service
 
+# 跨 await 边界的 trace_id，由 X-Request-Id middleware 设置，由 logging filter 注入到每条 log
+trace_id_var: contextvars.ContextVar[str] = contextvars.ContextVar("trace_id", default="-")
+
+
+class TraceIDFilter(logging.Filter):
+    def filter(self, record: logging.LogRecord) -> bool:
+        record.trace_id = trace_id_var.get()
+        return True
+
+
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(name)s - %(levelname)s - [trace=%(trace_id)s] %(message)s",
 )
+# 给所有 root handler 挂 filter，确保 format 里的 %(trace_id)s 永远有值
+for _h in logging.getLogger().handlers:
+    _h.addFilter(TraceIDFilter())
+
 logger = logging.getLogger(__name__)
 
 
@@ -46,6 +62,20 @@ async def attach_worker_id(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Worker-Id"] = settings.worker_id
     return response
+
+
+# X-Request-Id 跨服务 trace：读 Gateway 透传的 ID（没有则自生成），挂到 contextvar
+# 让本次请求处理期间所有日志都带 trace_id，便于跨进程关联
+@app.middleware("http")
+async def trace_id_middleware(request: Request, call_next):
+    trace_id = request.headers.get("x-request-id") or uuid.uuid4().hex
+    token = trace_id_var.set(trace_id)
+    try:
+        response = await call_next(request)
+        response.headers["X-Request-Id"] = trace_id
+        return response
+    finally:
+        trace_id_var.reset(token)
 
 
 # 全局异常处理

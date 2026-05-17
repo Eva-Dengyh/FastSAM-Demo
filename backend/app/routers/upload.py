@@ -45,8 +45,9 @@ async def upload_image(file: UploadFile):
     # 存入缓存
     image_id, width, height = image_service.store(image_np)
 
-    # 预计算 image embedding（耗时操作）
-    sam_service.set_image(image_np, image_id)
+    # 预计算 image embedding（耗时操作，吃 GPU，同样走信号量兜底）
+    async with sam_service.inference_limit:
+        sam_service.set_image(image_np, image_id)
 
     logger.info("Image uploaded: id=%s, size=%dx%d", image_id, width, height)
     return UploadResponse(image_id=image_id, width=width, height=height)

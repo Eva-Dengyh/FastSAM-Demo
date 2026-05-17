@@ -1,9 +1,12 @@
+import asyncio
 import logging
 
 import numpy as np
 import torch
 from sam2.build_sam import build_sam2
 from sam2.sam2_image_predictor import SAM2ImagePredictor
+
+from app.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +18,8 @@ class SAMService:
         self.predictor: SAM2ImagePredictor | None = None
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self._current_image_id: str | None = None
+        # GPU 并发兜底：即使 Gateway 配错，单进程也不会超过 max_inflight 个推理同时跑
+        self.inference_limit = asyncio.Semaphore(settings.max_inflight)
 
     @property
     def is_loaded(self) -> bool:

@@ -39,6 +39,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# 给所有响应加 worker 标识，Gateway 用来回填会话表、排查粘性路由
+@app.middleware("http")
+async def attach_worker_id(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Worker-Id"] = settings.worker_id
+    return response
+
+
 # 全局异常处理
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):

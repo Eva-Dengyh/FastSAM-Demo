@@ -33,8 +33,9 @@ async def segment_image(request: SegmentRequest):
     points = np.array([[p.x, p.y] for p in request.points])
     labels = np.array([p.label for p in request.points])
 
-    # 模型推理
-    masks, scores = sam_service.predict(points, labels)
+    # 模型推理（带兜底信号量，避免 GPU OOM）
+    async with sam_service.inference_limit:
+        masks, scores = sam_service.predict(points, labels)
 
     # 按 score 降序构建响应
     results = _build_results(masks, scores)

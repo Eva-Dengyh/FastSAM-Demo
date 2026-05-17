@@ -9,6 +9,12 @@ class Settings(BaseSettings):
     host: str = "0.0.0.0"
     port: int = 8000
 
+    # 节点标识：网关用来粘性路由和健康摘除，默认取主机名
+    worker_id: str = ""
+
+    # 单进程同时进行的推理上限（兜底，与 Gateway 的 max_inflight 同值）
+    max_inflight: int = 2
+
     # SAM 2.1 模型配置
     model_cfg: str = "configs/sam2.1/sam2.1_hiera_t.yaml"
     checkpoint_path: str = "checkpoints/sam2.1_hiera_tiny.pt"
@@ -26,3 +32,7 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+if not settings.worker_id:
+    import socket
+    settings.worker_id = socket.gethostname()

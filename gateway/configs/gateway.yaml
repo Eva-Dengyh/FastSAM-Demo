@@ -1,0 +1,30 @@
+# Gateway 监听
+listen: ":8080"
+
+# 业务前缀（前端走 /api/* 进来）
+api_prefix: "/api"
+
+# 后端 worker 列表（Phase 1 单 worker；扩多 worker 时往这里加）
+workers:
+  - id: "worker-0"
+    url: "http://backend:8000"
+    # 每个 worker 同时跑的推理数（与 Python 端 Semaphore 同值）
+    max_inflight: 2
+    # 每个 worker 的有界队列容量（超过立刻 429）
+    max_queue: 32
+
+# 单个请求的最大处理超时（包含队列等待 + 上游推理）
+request_timeout_seconds: 60
+
+# 会话 TTL（image_id → worker_id）；与后端 image_cache_ttl 对齐
+session_ttl_seconds: 3600
+
+# 健康检查
+health:
+  interval_seconds: 5
+  timeout_seconds: 2
+  unhealthy_threshold: 3   # 连续失败次数
+  healthy_threshold: 2     # 恢复需要的连续成功次数
+
+# 日志级别：debug / info / warn / error
+log_level: "info"
